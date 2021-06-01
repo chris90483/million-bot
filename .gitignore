@@ -2,3 +2,5 @@
 .git
 .git/*
 node-modules
+data
+data/*

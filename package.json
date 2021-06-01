@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "watch": "nodemon index.js"
+    "watch": "nodemon -e js index.js"
   },
   "author": "",
   "license": "ISC",
@@ -14,6 +14,8 @@
     "discord.js": "^12.5.3",
     "dotenv": "^10.0.0",
     "eslint": "^7.27.0",
+    "fs": "0.0.1-security",
+    "node-cleanup": "^2.1.2",
     "nodemon": "^2.0.7"
   }
 }
