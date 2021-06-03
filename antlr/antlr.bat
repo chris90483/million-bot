@@ -1,0 +1,1 @@
+java -jar .\antlr-4.9.2-complete.jar -Dlanguage=JavaScript %1
