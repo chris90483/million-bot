@@ -12,4 +12,4 @@ RUN chmod +x antlr-4.9.2-complete.jar && \
     java -jar ./antlr-4.9.2-complete.jar -Dlanguage=JavaScript expression/Expression.g4
     
 WORKDIR /usr/million-bot/
-CMD ["npm", "run", "start"]
+CMD ["node", "index.js"]
