@@ -7,8 +7,21 @@
         "google"
     ],
     "parserOptions": {
-        "ecmaVersion": 12
+        "ecmaVersion": 12,
+        "sourceType": "module"
     },
     "rules": {
+        "curly": [
+            "error"
+        ],
+        "max-len": [
+            "error",
+            {
+                "ignoreComments": true,
+                "ignoreUrls": true,
+                "ignoreStrings": true,
+                "ignoreTemplateLiterals": true
+            }
+        ]
     }
 }
