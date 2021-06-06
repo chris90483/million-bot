@@ -10,7 +10,7 @@ My friend John has a discord C++ server ([link](https://discord.gg/DpfjXdaZ)) wh
 ![afbeelding](https://user-images.githubusercontent.com/23078165/120921518-5b256880-c6c4-11eb-82fc-cbbab9bf2e68.png)
 * Can detect content from images using [node-tesseract-ocr](https://github.com/zapolnoch/node-tesseract-ocr)
 
-#wow, very cool!
+# wow, very cool!
 I know right?
 
 # documentation
