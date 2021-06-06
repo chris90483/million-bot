@@ -322,6 +322,7 @@ function handleMessageInOtherChannel(message) {
   if (message.author.bot) return;
   const cmdMessage = message.content.toLowerCase();
 
+ if (cmdMessage.indexOf('!million-') !== -1) {
   for (const key in AVAILABLE_COMMANDS) {
     if (AVAILABLE_COMMANDS.hasOwnProperty(key) &&
            cmdMessage.indexOf(key) !== -1) {
@@ -329,9 +330,9 @@ function handleMessageInOtherChannel(message) {
       return;
     }
   }
-  if (cmdMessage.indexOf('!million-') !== -1) {
     message.channel.send(`Unknown command. Available commands: ${Object.keys(AVAILABLE_COMMANDS).reduce((a, b) => `${a}, ${b}`)}`);
   }
+  // if we reach this part it's a normal message, do nothing.
 }
 
 /**
