@@ -29,6 +29,7 @@ const userStats = JSON.parse(fs.readFileSync('./data/userStats.json'));
 const tesseractConfig = JSON.parse(fs.readFileSync('tesseractConfig.json'));
 /**
 * @const {Object} client - The discordjs client that acts as the gateway to the Discord API.
+* it logs in with a bot token, provided by the dotenv.
 */
 const client = new Discord.Client();
 /**
@@ -42,7 +43,7 @@ const AVAILABLE_COMMANDS = {
 /**
 * @const {string} COUNTING_CHANNEL_NAME - The name of the counting channel on the Discord server.
 */
-const COUNTING_CHANNEL_NAME = 'the-million-channel';
+const COUNTING_CHANNEL_NAME = 'count-to-a-million';
 /**
 * {Object} lastMessage - Last message sent the the counting channel (a discordjs message).
 */
