@@ -11,7 +11,7 @@ My friend John has a discord C++ server ([link](https://discord.gg/DpfjXdaZ)) wh
 * Can detect content from images using [node-tesseract-ocr](https://github.com/zapolnoch/node-tesseract-ocr)
 
 # wow, very cool!
-I know right?
+I know right? If you'd like to contribute, send me a message (chris90483#5026)!
 
 # documentation
 here https://chris.lipsum.best/count_to_a_million/global.html
