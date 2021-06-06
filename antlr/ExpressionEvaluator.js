@@ -16,15 +16,6 @@ export default class ExpressionEvaluator extends ExpressionListener {
         this.results[ctx] = parseInt(this.results[ctx.expr()]);
 	}
 
-	// Enter a parse tree produced by ExpressionParser#intExpr.
-	enterIntExpr(ctx) {
-	}
-
-	// Exit a parse tree produced by ExpressionParser#intExpr.
-	exitIntExpr(ctx) {
-        this.results[ctx] =  parseInt(ctx.INT().getText());
-	}
-
 
 	// Enter a parse tree produced by ExpressionParser#addExpr.
 	enterAddExpr(ctx) {
@@ -97,5 +88,53 @@ export default class ExpressionEvaluator extends ExpressionListener {
 	// Exit a parse tree produced by ExpressionParser#multExpr.
 	exitMultExpr(ctx) {
         this.results[ctx] =  this.results[ctx.expr(0)] * this.results[ctx.expr(1)];
+	}
+    
+    
+    
+    // Enter a parse tree produced by ExpressionParser#numberExpr.
+	enterNumberExpr(ctx) {
+	}
+
+	// Exit a parse tree produced by ExpressionParser#numberExpr.
+	exitNumberExpr(ctx) {
+        this.results[ctx] = this.results[ctx.number()];
+	}
+    
+    // Enter a parse tree produced by ExpressionParser#hexNumber.
+	enterHexNumber(ctx) {
+	}
+
+	// Exit a parse tree produced by ExpressionParser#hexNumber.
+	exitHexNumber(ctx) {
+        this.results[ctx] = parseInt(ctx.INT().getText(), 16);
+	}
+    
+    // Enter a parse tree produced by ExpressionParser#binNumber.
+	enterBinNumber(ctx) {
+	}
+
+	// Exit a parse tree produced by ExpressionParser#binNumber.
+	exitBinNumber(ctx) {
+        this.results[ctx] = parseInt(ctx.INT().getText(), 2);
+	}
+
+	// Enter a parse tree produced by ExpressionParser#basedNumber.
+	enterBasedNumber(ctx) {
+	}
+
+	// Exit a parse tree produced by ExpressionParser#basedNumber.
+	exitBasedNumber(ctx) {
+        this.results[ctx] = parseInt(ctx.INT(0).getText(), ctx.INT(1).getText());
+	}
+
+
+	// Enter a parse tree produced by ExpressionParser#simpleNumber.
+	enterSimpleNumber(ctx) {
+	}
+
+	// Exit a parse tree produced by ExpressionParser#simpleNumber.
+	exitSimpleNumber(ctx) {
+        this.results[ctx] = parseInt(ctx.INT().getText());
 	}
 }

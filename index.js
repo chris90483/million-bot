@@ -6,7 +6,6 @@ import ExpressionLexer from './antlr/expression/ExpressionLexer.js';
 import ExpressionParser from './antlr/expression/ExpressionParser.js';
 import ExpressionEvaluator from './antlr/ExpressionEvaluator.js';
 
-
 import * as fs from 'fs';
 if (!fs.existsSync('./data/userStats.json')) {
   fs.writeFileSync('./data/userStats.json', JSON.stringify({}));
@@ -14,6 +13,12 @@ if (!fs.existsSync('./data/userStats.json')) {
 }
 
 import * as tesseract from 'node-tesseract-ocr';
+import nodeCleanup from 'node-cleanup';
+import * as Discord from 'discord.js';
+
+// ///////////
+// Globals //
+// ///////////
 /**
 * @const {Object} userStats - object containing statistics on users that logs activity regarding the counting channel.
 */
@@ -22,25 +27,37 @@ const userStats = JSON.parse(fs.readFileSync('./data/userStats.json'));
 * @const {Object} tesseractConfig - configuration used for running tesseract OCR commands.
 */
 const tesseractConfig = JSON.parse(fs.readFileSync('tesseractConfig.json'));
-
-import nodeCleanup from 'node-cleanup';
-import * as Discord from 'discord.js';
 /**
 * @const {Object} client - The discordjs client that acts as the gateway to the Discord API.
 */
 const client = new Discord.Client();
-
+/**
+* @const {Object} AVAILABLE_COMMANDS - object that maps command strings to functions that handle those commands.
+*/
 const AVAILABLE_COMMANDS = {
   '!million-help': showHelp,
   '!million-stats': showStats,
   '!million-progress': showMillionProgress,
 };
+/**
+* @const {string} COUNTING_CHANNEL_NAME - The name of the counting channel on the Discord server.
+*/
+const COUNTING_CHANNEL_NAME = 'the-million-channel';
+/**
+* {Object} lastMessage - Last message sent the the counting channel (a discordjs message).
+*/
 let lastMessage = undefined;
+
+
+// /////////////
+// Functions //
+// /////////////
 
 /**
 * Is not NaN check, with a log when it was NaN.
 * Used in various checking functions.
 * @param {number} number - The number.
+* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
 * @return {boolean} the is-not-NaN flag
 */
 function isNotNaN(number, printMessage = true) {
@@ -57,6 +74,7 @@ function isNotNaN(number, printMessage = true) {
 * Used in {@link runChecks} and in {@link runChecksOCR}.
 * @param {number} currInt - The number being checked.
 * @param {number} prevInt - The parsed number from the {@link lastMessage| last message}.
+* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
 * @return {boolean} the is-next-number flag
 */
 function isNextNumber(currInt, prevInt, printMessage = true) {
@@ -71,10 +89,12 @@ function isNextNumber(currInt, prevInt, printMessage = true) {
 * Function that checks wheter the message is authored by another memeber than the last message.
 * It skips this check (returns true) when the author is a bot. It includes a log when the check isn't passed.
 * Used in {@link runChecks}.
-* @param {Object} message - The message under review
+* @param {Object} message - The discordjs Message under review
+* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
 * @return {boolean} the is-different-member flag
 */
 function isDifferentMember(message, printMessage = true) {
+  // we don't care about this if the author is a bot
   if (lastMessage && lastMessage.author.bot) {
     return true;
   }
@@ -90,6 +110,7 @@ function isDifferentMember(message, printMessage = true) {
 * Function that checks wheter the message can be parsed and evaluated into the next number in the counting channel.
 * @param {string} messageContent - The text from the message under review.
 * @param {string} prevInt - The retrieved previous number from the counting channel (obtained by calling {@link getLastInt}).
+* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
 * @return {boolean} whether it can be evaluated to the next number.
 */
 function canBeParsedAsNextNumber(messageContent, prevInt, printMessage = true) {
@@ -106,21 +127,24 @@ function canBeParsedAsNextNumber(messageContent, prevInt, printMessage = true) {
 /**
 * Function that retrieves the number from the last message.
 * When it couldn't successfully retrieve the lat number it returns -1.
+* When this function is called the {@link lastMessage} variable <i>should</i> be initialized.
 * A callback is used here because the {@link runChecksOCR} function uses callbacks.
 * @param {function} callBack - callBack the result is passed to.
 */
 function getLastInt(callBack) {
   if (lastMessage !== undefined || lastMessage !== null) {
-    if (!isNaN(parseInt(lastMessage.content))) {
-      callBack(parseInt(lastMessage.content));
-      return;
-    }
+    // try evaluating
     const result = evaluate(lastMessage.content);
     if (!isNaN(result)) {
       callBack(result);
       return;
     }
-    const attachments = lastMessage.attachments.filter((attachment) => attachment.url.indexOf('png' !== -1) || attachment.url.indexOf('jpg' !== -1) || attachment.url.indexOf('jpeg' !== -1));
+    // try OCR
+    const attachments = lastMessage.attachments.filter(
+        (attachment) => attachment.url.indexOf('png' !== -1) ||
+                                    attachment.url.indexOf('jpg' !== -1) ||
+                                    attachment.url.indexOf('jpeg' !== -1),
+    );
     if (attachments.size > 0) {
       tesseract
           .recognize(attachments.first().url, tesseractConfig)
@@ -157,6 +181,7 @@ function evaluate(textInput) {
   // here's a bunch of hacks to prevent antlr from cluttering the console...
   lexer.notifyListeners = (e) => {};
   parser._errHandler.reportError = (a) => {};
+  // ok here we go
   const tree = parser.expression();
   const evaluator = new ExpressionEvaluator();
   antlr4.tree.ParseTreeWalker.DEFAULT.walk(evaluator, tree);
@@ -168,7 +193,7 @@ function evaluate(textInput) {
 * The statistics are retrieved from the {@link userStats} global variable.
 * The bot sends the message to the channel the author posted in.
 * This channel can never be the counting channel, as this is checked in the on-message event handler.
-* @param {Object} message - the message the bot is acting on.
+* @param {Object} message - the discordjs Message the bot is acting on.
 */
 function showStats(message) {
   const theirStats = userStats.hasOwnProperty(message.author.id) ?
@@ -176,17 +201,21 @@ function showStats(message) {
                         {};
   let botMessage =
   `Stats for ${message.author.username}#${message.author.discriminator}: \n`;
-  for (const prop in theirStats) {
-    if (theirStats.hasOwnProperty(prop)) {
-      botMessage += `  ${prop}: ${theirStats[prop]}\n`;
+  if (theirStats !== {}) {
+    for (const prop in theirStats) {
+      if (theirStats.hasOwnProperty(prop)) {
+        botMessage += `  ${prop}: ${theirStats[prop]}\n`;
+      }
     }
+  } else {
+    botMessage += '  No stats yet for this user';
   }
   message.channel.send(botMessage);
 }
 
 /**
 * Function that shows a summary of available bot commands in Discord.
-* @param {Object} message - the message the bot is acting on.
+* @param {Object} message - the discordjs Message the bot is acting on.
 */
 function showHelp(message) {
   message.channel.send(`Available commands: ${Object.keys(AVAILABLE_COMMANDS).reduce((a, b) => `${a}, ${b}`)}`);
@@ -195,7 +224,7 @@ function showHelp(message) {
 /**
 * Function that shows the progress to a million as percentage, in Discord.
 * Doesn't work when the last number was not successfully retrieved. The bot handles this by replying with a generic error message.
-* @param {Object} message - the message the bot is acting on.
+* @param {Object} message - the discordjs Message the bot is acting on.
 */
 function showMillionProgress(message) {
   getLastInt((lastInt) => {
@@ -211,7 +240,7 @@ function showMillionProgress(message) {
 /**
 * Function that logs activity related to the counting channel.
 * the stats are stored in {@link userStats}.
-* @param {Object} message - the message the bot is acting on.
+* @param {Object} message - the discordjs Message the bot is acting on.
 */
 function addStats(message) {
   if (userStats.hasOwnProperty(message.author.id)) {
@@ -223,81 +252,78 @@ function addStats(message) {
   }
 }
 
-function runChecksOCR(attachment, checkCallbackFunction, returnType, printMessage = true) {
+/**
+* Function that runs checks on an attachment from a message in the counting channel using tesseract OCR.
+* @param {Object} attachment - The attached image as a discordjs Attachment
+* @param {function} callback - The callback to call with the OCR result. The callback is passed a boolean for success or a number with the evaluated number, depending on {@link returnType}.
+* @param {string} returnType - The type of the result to pass to the {@link callback} function
+* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
+*/
+function runChecksOCR(attachment, callback, returnType, printMessage = true) {
   if (printMessage) console.log('   [OCR] - running OCR...');
   tesseract
       .recognize(attachment.url, tesseractConfig)
       .then((text) => {
         if (printMessage) console.log(`   [OCR] - OUTPUT: ${text}`);
-        const currInt = parseInt(text);
         getLastInt((prevInt) => {
-          if (isNotNaN(currInt, false)) {
-            if (prevInt !== -1 && isNextNumber(currInt, prevInt, false)) {
-              if (printMessage) console.log('   [OCR] - ✔️ Image approved, it\'s the next number!');
-              checkCallbackFunction(returnType === 'boolean' ? true : currInt);
-              return;
-            }
-          }
           if (prevInt !== -1 && canBeParsedAsNextNumber(text, prevInt, false)) {
             if (printMessage) console.log('   [OCR] - ✔️ Image approved, it can be parsed as the next number!');
-            checkCallbackFunction(returnType === 'boolean' ? true : evaluate(text));
+            callback(returnType === 'boolean' ? true : evaluate(text));
             return;
           }
           if (printMessage) console.log('   [OCR] - ❌ Image rejected.');
-          checkCallbackFunction(returnType === 'boolean' ? false : -1);
+          callback(returnType === 'boolean' ? false : -1);
           return;
         });
       })
       .catch((error) => {
         console.log(error.message);
-        checkCallbackFunction(returnType === 'boolean' ? false : -1);
+        callback(returnType === 'boolean' ? false : -1);
         return;
       });
 }
 
-function runChecks(message, checkCallbackFunction) {
-  const currInt = parseInt(message.content);
+/**
+* The main checking function that runs checks on a message in the counting channel.
+* @param {Object} message - The discordjs message under review.
+* @param {function} callback - The callback to call with the result. It is passed a boolean that says wether the message is approved or not.
+*/
+function runChecks(message, callback) {
   getLastInt((prevInt) => {
     if (isDifferentMember(message)) {
-      if (isNotNaN(currInt)) {
-        if (prevInt === -1) {
-          // Couldn't retrieve the last number, so we can't run checks.
-          // Approve the message.
-          checkCallbackFunction(true);
-          return;
-        }
-        // ok seems cool over here. If it's the next number in line we can approve it!
-        if (isNextNumber(currInt, prevInt)) {
-          console.log('✔️ Message approved, it\'s the next number!');
-          checkCallbackFunction(true);
-          return;
-        }
-      }
-      // is NaN or is not next number, try parsing if the previous number is known.
-      if (prevInt !== - 1 && canBeParsedAsNextNumber(message.content, prevInt)) {
-        checkCallbackFunction(true);
+      // Try parsing if the previous number is known.
+      if (prevInt !== - 1 &&
+                canBeParsedAsNextNumber(message.content, prevInt)) {
+        callback(true);
         return;
       }
 
       // retry with OCR, if there is an attachment
       const pngAttachments = message.attachments.filter((attachment) => attachment.url.indexOf('png' !== -1) || attachment.url.indexOf('jpg' !== -1) || attachment.url.indexOf('jpeg' !== -1));
       if (pngAttachments.size > 0) {
-        runChecksOCR(pngAttachments.first(), checkCallbackFunction, 'boolean');
+        runChecksOCR(pngAttachments.first(), callback, 'boolean');
         return;
       }
     }
     // not different member, or no satisfied requirements
-    checkCallbackFunction(false);
+    callback(false);
     return;
   });
 }
 
+/**
+* The handler function that runs checks on a message in any other channel.
+* This function handles bot commands, using {@link AVAILABLE_COMMANDS}.
+* @param {Object} message - The discordjs message that's being processed.
+*/
 function handleMessageInOtherChannel(message) {
+  // we don't care about what bots send.
   if (message.author.bot) return;
   const cmdMessage = message.content.toLowerCase();
 
   for (const key in AVAILABLE_COMMANDS) {
-    if (AVAILABLE_COMMANDS.hasOwnProperty(key) && cmdMessage.indexOf(key) !== -1) {
+    if (AVAILABLE_COMMANDS.hasOwnProperty(key) &&
+           cmdMessage.indexOf(key) !== -1) {
       AVAILABLE_COMMANDS[key](message);
       return;
     }
@@ -307,16 +333,22 @@ function handleMessageInOtherChannel(message) {
   }
 }
 
+/**
+* The handler function that runs checks on a message in the counting channel.
+* @param {Object} message - The discordjs message that's being processed.
+*/
 function handleMessageInMillion(message) {
+  // we don't care about what bots send.
   if (message.author.bot) return;
   console.log(`User ${message.author.username} sent ${message.content}`);
+  // once this function is in action, the {@link lastMessage} should be initialized.
   if (lastMessage === undefined || lastMessage === null) {
     console.log(`bug: lastMessage: ${lastMessage}`);
     lastMessage = message;
     return;
   }
 
-
+  // ok, everything looks good. Time to check the message.
   runChecks(message, (messageApproved) => {
     if (messageApproved) {
       lastMessage = message;
@@ -329,16 +361,21 @@ function handleMessageInMillion(message) {
   });
 }
 
+/**
+* function that retrieves the last send message to the counting channel as a discordjs Message.
+*/
 function fetchLastMessage() {
   console.log('Fetching the last message..');
   const millionChannel = client.channels.cache
-      .find((channel) => channel.name.toLowerCase() == 'the-million-channel');
+      .find((channel) => channel.name.toLowerCase() == COUNTING_CHANNEL_NAME);
 
   millionChannel.messages.fetch({limit: 2})
       .then((messages) => {
         console.log(`Found it! It's ${messages
-            .filter((message) => !message.author.bot).first().content.length > 0 ? messages
-                .filter((message) => !message.author.bot).first().content : '<empty message>'}`);
+            .filter((message) => !message.author.bot)
+            .first().content.length > 0 ?
+            messages.filter((message) => !message.author.bot).first().content :
+                '<empty message>'}`);
         lastMessage = messages
             .filter((message) => (!message.author.bot)).first();
       })
@@ -346,9 +383,9 @@ function fetchLastMessage() {
 }
 
 
-/**
-* Discordjs client event handlers.
-*/
+// ///////////////////////////////////
+// Discordjs client event handlers //
+// ///////////////////////////////////
 
 client.once('ready', () => {
   console.log('Connection successful.');
@@ -357,7 +394,7 @@ client.once('ready', () => {
 
 
 client.on('message', (message) => {
-  if (message.channel.name === 'the-million-channel') {
+  if (message.channel.name === COUNTING_CHANNEL_NAME) {
     handleMessageInMillion(message);
   } else {
     handleMessageInOtherChannel(message);
@@ -365,27 +402,21 @@ client.on('message', (message) => {
 });
 
 client.on('messageUpdate', (oldMessage, newMessage) => {
-  if (newMessage.channel.name === 'the-million-channel') {
+  if (newMessage.channel.name === COUNTING_CHANNEL_NAME) {
     console.log(`Detected a message update: User 
         ${newMessage.author.username} changed 
         ${oldMessage.content} to ${newMessage.content}.`);
-
-    if (!isNotNaN(parseInt(newMessage.content))) {
-      newMessage.delete().then((m) => {
-        fetchLastMessage();
-      });
-    } else {
-      console.log('✔️ Edit approved!');
-    }
+    //todo: run checks on edited messages.
   }
 });
 
-/**
- * Main section
- */
+// ////////////////
+// Main section //
+// ////////////////
 
 client.login(process.env.TOKEN);
 
+// when the process is halted, save the userStats data first.
 nodeCleanup((exitCode, signal) => {
   fs.writeFileSync('./data/userStats.json',
       JSON.stringify(userStats),
