@@ -12,6 +12,7 @@ if (!fs.existsSync('./data/userStats.json')) {
   console.log('userStats.json didn\'t exist and was created.');
 }
 
+import Logger from './logger.js';
 import * as tesseract from 'node-tesseract-ocr';
 import nodeCleanup from 'node-cleanup';
 import * as Discord from 'discord.js';
@@ -19,6 +20,8 @@ import * as Discord from 'discord.js';
 // ///////////
 // Globals //
 // ///////////
+const logger = new Logger();
+
 /**
 * @const {Object} userStats - object containing statistics on users that logs activity regarding the counting channel.
 */
@@ -53,38 +56,6 @@ let lastMessage = undefined;
 // /////////////
 // Functions //
 // /////////////
-
-/**
-* Is not NaN check, with a log when it was NaN.
-* Used in various checking functions.
-* @param {number} number - The number.
-* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
-* @return {boolean} the is-not-NaN flag
-*/
-function isNotNaN(number, printMessage = true) {
-  if (isNaN(number)) {
-    if (printMessage) console.log('❔ Message is NaN');
-    return false;
-  }
-  return true;
-}
-
-/**
-* Function that checks wheter the next number is the successor of the previous.
-* It includes a log when it isn't.
-* Used in {@link runChecks} and in {@link runChecksOCR}.
-* @param {number} currInt - The number being checked.
-* @param {number} prevInt - The parsed number from the {@link lastMessage| last message}.
-* @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
-* @return {boolean} the is-next-number flag
-*/
-function isNextNumber(currInt, prevInt, printMessage = true) {
-  if (currInt !== prevInt + 1) {
-    if (printMessage) console.log(`❔ Message is not previous + 1 (curr: ${currInt} prev: ${prevInt})`);
-    return false;
-  }
-  return true;
-}
 
 /**
 * Function that checks wheter the message is authored by another memeber than the last message.
@@ -157,7 +128,7 @@ function getLastInt(callBack) {
             }
           })
           .catch((error) => {
-            console.log(error.message);
+            logger.logError('getLastInt() tesseract error: ' + error.message);
             callBack(-1);
             return;
           });
@@ -255,12 +226,13 @@ function addStats(message) {
 
 /**
 * Function that runs checks on an attachment from a message in the counting channel using tesseract OCR.
-* @param {Object} attachment - The attached image as a discordjs Attachment
+* @param {Object} message - The discordjs message
+* @param {Object} attachment - the attachment
 * @param {function} callback - The callback to call with the OCR result. The callback is passed a boolean for success or a number with the evaluated number, depending on {@link returnType}.
 * @param {string} returnType - The type of the result to pass to the {@link callback} function
 * @param {string} printMessage - Flag to enable/disable console.log calls, defaults to true (meaning with logging).
 */
-function runChecksOCR(attachment, callback, returnType, printMessage = true) {
+function runChecksOCR(message, attachment, callback, returnType, printMessage = true) {
   if (printMessage) console.log('   [OCR] - running OCR...');
   tesseract
       .recognize(attachment.url, tesseractConfig)
@@ -273,12 +245,17 @@ function runChecksOCR(attachment, callback, returnType, printMessage = true) {
             return;
           }
           if (printMessage) console.log('   [OCR] - ❌ Image rejected.');
+          message.author.createDM()
+              .then((channel) => {
+                channel.send(`*beep boop* Hi there. I couldn't quite recognize what you posted in the counting channel. I got as far as \`${text}\`! Please make sure the content in the image is very readable, my vision is not that great. Thanks!`);
+              })
+              .catch((error) => logger.logError(`runChecksOCR() createDM error: ${error.content}`));
           callback(returnType === 'boolean' ? false : -1);
           return;
         });
       })
       .catch((error) => {
-        console.log(error.message);
+        logger.logError('runChecksOCR() tesseract error: ' + error.message);
         callback(returnType === 'boolean' ? false : -1);
         return;
       });
@@ -302,7 +279,7 @@ function runChecks(message, callback) {
       // retry with OCR, if there is an attachment
       const pngAttachments = message.attachments.filter((attachment) => attachment.url.indexOf('png' !== -1) || attachment.url.indexOf('jpg' !== -1) || attachment.url.indexOf('jpeg' !== -1));
       if (pngAttachments.size > 0) {
-        runChecksOCR(pngAttachments.first(), callback, 'boolean');
+        runChecksOCR(message, pngAttachments.first(), callback, 'boolean');
         return;
       }
     }
@@ -311,6 +288,37 @@ function runChecks(message, callback) {
     return;
   });
 }
+
+/**
+* Function that handles message edits. It tries its best to ensure that the edited message is still correct,
+* but it is limited in the APIs ability to edit message attachments.
+* @param {Object} oldMessage - the discordjs Message before it was edited.
+* @param {Object} newMessage - the discordjs Message after it was edited.
+*/
+function handleEdited(oldMessage, newMessage) {
+  if (!isNaN(evaluate(oldMessage.content))) {
+    if (evaluate(newMessage.content) !== evaluate(oldMessage.content)) {
+      if (lastMessage && lastMessage.id === newMessage.id) {
+      // not approved, and it's the newest message. delete it!
+        newMessage.delete()
+            .then((m) => {
+              fetchLastMessage();
+            })
+            .catch((error)=>{
+              logger.logError(`handleMessageInMillion() message deletion error: ${error.message}`);
+            });
+      } else {
+        // not approved, but not the newest. Can't delete it. Send a message about it though.
+        newMessage.author.createDM()
+            .then((channel) => {
+              channel.send(`*beep boop* Hi there. You edited a message in the counting channel. I detected that it isn't correct anymore. Please make sure the content of your message evaluates to ${evaluate(oldMessage.content)}. Have a nice day!`);
+            })
+            .catch((error) => logger.logError(`handleEdited() createDM error: ${error.content}`));
+      }
+    }
+  }
+}
+
 
 /**
 * The handler function that runs checks on a message in any other channel.
@@ -322,14 +330,14 @@ function handleMessageInOtherChannel(message) {
   if (message.author.bot) return;
   const cmdMessage = message.content.toLowerCase();
 
- if (cmdMessage.indexOf('!million-') !== -1) {
-  for (const key in AVAILABLE_COMMANDS) {
-    if (AVAILABLE_COMMANDS.hasOwnProperty(key) &&
+  if (cmdMessage.indexOf('!million-') !== -1) {
+    for (const key in AVAILABLE_COMMANDS) {
+      if (AVAILABLE_COMMANDS.hasOwnProperty(key) &&
            cmdMessage.indexOf(key) !== -1) {
-      AVAILABLE_COMMANDS[key](message);
-      return;
+        AVAILABLE_COMMANDS[key](message);
+        return;
+      }
     }
-  }
     message.channel.send(`Unknown command. Available commands: ${Object.keys(AVAILABLE_COMMANDS).reduce((a, b) => `${a}, ${b}`)}`);
   }
   // if we reach this part it's a normal message, do nothing.
@@ -340,12 +348,10 @@ function handleMessageInOtherChannel(message) {
 * @param {Object} message - The discordjs message that's being processed.
 */
 function handleMessageInMillion(message) {
-  // we don't care about what bots send.
-  if (message.author.bot) return;
   console.log(`User ${message.author.username} sent ${message.content}`);
   // once this function is in action, the {@link lastMessage} should be initialized.
   if (lastMessage === undefined || lastMessage === null) {
-    console.log(`bug: lastMessage: ${lastMessage}`);
+    logger.logError(`handleMessageInMillion() lastMessage: ${lastMessage}. It should be initialized when this function is called.`);
     lastMessage = message;
     return;
   }
@@ -353,35 +359,52 @@ function handleMessageInMillion(message) {
   // ok, everything looks good. Time to check the message.
   runChecks(message, (messageApproved) => {
     if (messageApproved) {
+      logger.logMessage(message, true, true);
       lastMessage = message;
       addStats(message);
     } else {
-      message.delete().then((m)=>{}).catch((error)=>{
-        console.log(`deletion error: ${error}`);
-      });
+      logger.logMessage(message, false, true);
+      message.delete()
+          .then((m) => {
+            fetchLastMessage();
+          })
+          .catch((error)=>{
+            logger.logError(`handleMessageInMillion() message deletion error: ${error.message}`);
+          });
     }
   });
 }
 
 /**
-* function that retrieves the last send message to the counting channel as a discordjs Message.
+* Function that returns the counting channel. It finds the channnel from either the test server or the production server based on the .env setting.
+* @return {Object} the counting channel.
+*/
+function getMillionChannel() {
+  const id = Number(process.env.PRODUCTION) > 0 ?
+            Number(process.env.BETTER_CPP_SERVER_ID) :
+            Number(process.env.TEST_SERVER_ID);
+  return client.guilds.cache
+      .find((guild) => Number(guild.id) === id)
+      .channels.cache
+      .find((channel) => channel.name.toLowerCase() == COUNTING_CHANNEL_NAME);
+}
+
+/**
+* function that retrieves the last send message from the counting channel as a discordjs Message.
+* it stores the retrieved message in the {@link lastMessage} global variable.
 */
 function fetchLastMessage() {
   console.log('Fetching the last message..');
-  const millionChannel = client.channels.cache
-      .find((channel) => channel.name.toLowerCase() == COUNTING_CHANNEL_NAME);
+  const millionChannel = getMillionChannel();
 
   millionChannel.messages.fetch({limit: 2})
       .then((messages) => {
-        console.log(`Found it! It's ${messages
-            .filter((message) => !message.author.bot)
-            .first().content.length > 0 ?
-            messages.filter((message) => !message.author.bot).first().content :
+        console.log(`${messages.first().content.length > 0 ?
+                 messages.first().content:
                 '<empty message>'}`);
-        lastMessage = messages
-            .filter((message) => (!message.author.bot)).first();
+        lastMessage = messages.first();
       })
-      .catch(console.error);
+      .catch((error) => logger.logError('fetchLastMessage(): message fetch error ' + error.message));
 }
 
 
@@ -396,19 +419,39 @@ client.once('ready', () => {
 
 
 client.on('message', (message) => {
-  if (message.channel.name === COUNTING_CHANNEL_NAME) {
-    handleMessageInMillion(message);
-  } else {
-    handleMessageInOtherChannel(message);
+  if (message.channel.type === 'dm') {
+      return;
+  }
+  
+  const id = Number(process.env.PRODUCTION) > 0 ?
+        Number(process.env.BETTER_CPP_SERVER_ID) :
+        Number(process.env.TEST_SERVER_ID);
+  if (Number(message.guild.id) === id) {
+    if (message.channel.name === COUNTING_CHANNEL_NAME) {
+      handleMessageInMillion(message);
+    } else {
+      handleMessageInOtherChannel(message);
+    }
   }
 });
 
 client.on('messageUpdate', (oldMessage, newMessage) => {
-  if (newMessage.channel.name === COUNTING_CHANNEL_NAME) {
-    console.log(`Detected a message update: User 
+  if (newMessage.channel.type === 'dm') {
+      return;
+  }
+  
+  const id = Number(process.env.PRODUCTION) > 0 ?
+        Number(process.env.BETTER_CPP_SERVER_ID) :
+        Number(process.env.TEST_SERVER_ID);
+  if (Number(newMessage.guild.id) === id) {
+    if (newMessage.channel.name === COUNTING_CHANNEL_NAME) {
+      console.log(`Detected a message update: User 
         ${newMessage.author.username} changed 
         ${oldMessage.content} to ${newMessage.content}.`);
-    //todo: run checks on edited messages.
+
+      // run checks on edited messages.
+      handleEdited(oldMessage, newMessage);
+    }
   }
 });
 
@@ -423,7 +466,7 @@ nodeCleanup((exitCode, signal) => {
   fs.writeFileSync('./data/userStats.json',
       JSON.stringify(userStats),
       (err) => {
-        if (err) console.error(`${err}`);
+        if (err) logger.logError('nodeCleanup error: ' + err.message);
         console.log('Saved user stats, exiting.');
       });
 });
