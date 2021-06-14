@@ -86,6 +86,7 @@ function isDifferentMember(message, printMessage = true) {
 * @return {boolean} whether it can be evaluated to the next number.
 */
 function canBeParsedAsNextNumber(messageContent, prevInt, printMessage = true) {
+  console.log(`canBeParsedAsNextNumber messageContent: ${messageContent}, prevInt: ${prevInt}`);
   const evaluatedResult = evaluate(messageContent);
   if (evaluatedResult === prevInt + 1) {
     if (printMessage) console.log(`✔️ Message approved, it evaluates to the next number (${evaluatedResult})!`);
@@ -311,7 +312,7 @@ function handleEdited(oldMessage, newMessage) {
         // not approved, but not the newest. Can't delete it. Send a message about it though.
         newMessage.author.createDM()
             .then((channel) => {
-              channel.send(`*beep boop* Hi there. You edited a message in the counting channel. I detected that it isn't correct anymore. Please make sure the content of your message evaluates to ${evaluate(oldMessage.content)}. Have a nice day!`);
+              channel.send(`*beep boop* Hi there. You edited a message in the counting channel. I detected that the value in your message has changed. Plase make sure it's currect. Have a nice day!`);
             })
             .catch((error) => logger.logError(`handleEdited() createDM error: ${error.content}`));
       }
@@ -453,6 +454,10 @@ client.on('messageUpdate', (oldMessage, newMessage) => {
       handleEdited(oldMessage, newMessage);
     }
   }
+});
+
+client.on('messageDelete', message => {
+  fetchLastMessage();
 });
 
 // ////////////////
