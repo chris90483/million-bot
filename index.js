@@ -34,7 +34,14 @@ const tesseractConfig = JSON.parse(fs.readFileSync('tesseractConfig.json'));
 * @const {Object} client - The discordjs client that acts as the gateway to the Discord API.
 * it logs in with a bot token, provided by the dotenv.
 */
-const client = new Discord.Client();
+const client = new Discord.Client({
+  intents: [
+		Discord.GatewayIntentBits.Guilds,
+		Discord.GatewayIntentBits.GuildMessages,
+		Discord.GatewayIntentBits.MessageContent,
+		Discord.GatewayIntentBits.GuildMembers,
+  ]
+});
 /**
 * @const {Object} AVAILABLE_COMMANDS - object that maps command strings to functions that handle those commands.
 */
@@ -114,25 +121,25 @@ function getLastInt(callBack) {
     }
     // try OCR
     const attachments = lastMessage.attachments.filter(
-        (attachment) => attachment.url.indexOf('png' !== -1) ||
-                                    attachment.url.indexOf('jpg' !== -1) ||
-                                    attachment.url.indexOf('jpeg' !== -1),
+      (attachment) => attachment.url.indexOf('png' !== -1) ||
+        attachment.url.indexOf('jpg' !== -1) ||
+        attachment.url.indexOf('jpeg' !== -1),
     );
     if (attachments.size > 0) {
       tesseract
-          .recognize(attachments.first().url, tesseractConfig)
-          .then((text) => {
-            const tesseractResult = evaluate(text);
-            if (typeof tesseractResult === 'number' && tesseractResult > 0) {
-              callBack(tesseractResult);
-              return;
-            }
-          })
-          .catch((error) => {
-            logger.logError('getLastInt() tesseract error: ' + error.message);
-            callBack(-1);
+        .recognize(attachments.first().url, tesseractConfig)
+        .then((text) => {
+          const tesseractResult = evaluate(text);
+          if (typeof tesseractResult === 'number' && tesseractResult > 0) {
+            callBack(tesseractResult);
             return;
-          });
+          }
+        })
+        .catch((error) => {
+          logger.logError('getLastInt() tesseract error: ' + error.message);
+          callBack(-1);
+          return;
+        });
       return;
     }
   }
@@ -152,8 +159,8 @@ function evaluate(textInput) {
   const tokens = new antlr4.CommonTokenStream(lexer);
   const parser = new ExpressionParser(tokens);
   // here's a bunch of hacks to prevent antlr from cluttering the console...
-  lexer.notifyListeners = (e) => {};
-  parser._errHandler.reportError = (a) => {};
+  lexer.notifyListeners = (e) => { };
+  parser._errHandler.reportError = (a) => { };
   // ok here we go
   const tree = parser.expression();
   const evaluator = new ExpressionEvaluator();
@@ -170,10 +177,10 @@ function evaluate(textInput) {
 */
 function showStats(message) {
   const theirStats = userStats.hasOwnProperty(message.author.id) ?
-                        userStats[message.author.id] :
-                        {};
+    userStats[message.author.id] :
+    {};
   let botMessage =
-  `Stats for ${message.author.username}#${message.author.discriminator}: \n`;
+    `Stats for ${message.author.username}#${message.author.discriminator}: \n`;
   if (theirStats !== {}) {
     for (const prop in theirStats) {
       if (theirStats.hasOwnProperty(prop)) {
@@ -217,11 +224,11 @@ function showMillionProgress(message) {
 */
 function addStats(message) {
   if (userStats.hasOwnProperty(message.author.id)) {
-        userStats[message.author.id].hasOwnProperty('amountCounted') ?
-            userStats[message.author.id].amountCounted += 1 :
-            userStats[message.author.id].amountCounted = 1;
+    userStats[message.author.id].hasOwnProperty('amountCounted') ?
+      userStats[message.author.id].amountCounted += 1 :
+      userStats[message.author.id].amountCounted = 1;
   } else {
-    userStats[message.author.id] = {'amountCounted': 1};
+    userStats[message.author.id] = { 'amountCounted': 1 };
   }
 }
 
@@ -236,30 +243,30 @@ function addStats(message) {
 function runChecksOCR(message, attachment, callback, returnType, printMessage = true) {
   if (printMessage) console.log('   [OCR] - running OCR...');
   tesseract
-      .recognize(attachment.url, tesseractConfig)
-      .then((text) => {
-        if (printMessage) console.log(`   [OCR] - OUTPUT: ${text}`);
-        getLastInt((prevInt) => {
-          if (prevInt !== -1 && canBeParsedAsNextNumber(text, prevInt, false)) {
-            if (printMessage) console.log('   [OCR] - ✔️ Image approved, it can be parsed as the next number!');
-            callback(returnType === 'boolean' ? true : evaluate(text));
-            return;
-          }
-          if (printMessage) console.log('   [OCR] - ❌ Image rejected.');
-          message.author.createDM()
-              .then((channel) => {
-                channel.send(`*beep boop* Hi there. I couldn't quite recognize what you posted in the counting channel. I got as far as \`${text}\`! Please make sure the content in the image is very readable, my vision is not that great. Thanks!`);
-              })
-              .catch((error) => logger.logError(`runChecksOCR() createDM error: ${error.content}`));
-          callback(returnType === 'boolean' ? false : -1);
+    .recognize(attachment.url, tesseractConfig)
+    .then((text) => {
+      if (printMessage) console.log(`   [OCR] - OUTPUT: ${text}`);
+      getLastInt((prevInt) => {
+        if (prevInt !== -1 && canBeParsedAsNextNumber(text, prevInt, false)) {
+          if (printMessage) console.log('   [OCR] - ✔️ Image approved, it can be parsed as the next number!');
+          callback(returnType === 'boolean' ? true : evaluate(text));
           return;
-        });
-      })
-      .catch((error) => {
-        logger.logError('runChecksOCR() tesseract error: ' + error.message);
+        }
+        if (printMessage) console.log('   [OCR] - ❌ Image rejected.');
+        message.author.createDM()
+          .then((channel) => {
+            channel.send(`*beep boop* Hi there. I couldn't quite recognize what you posted in the counting channel. I got as far as \`${text}\`! Please make sure the content in the image is very readable, my vision is not that great. Thanks!`);
+          })
+          .catch((error) => logger.logError(`runChecksOCR() createDM error: ${error.content}`));
         callback(returnType === 'boolean' ? false : -1);
         return;
       });
+    })
+    .catch((error) => {
+      logger.logError('runChecksOCR() tesseract error: ' + error.message);
+      callback(returnType === 'boolean' ? false : -1);
+      return;
+    });
 }
 
 /**
@@ -272,7 +279,7 @@ function runChecks(message, callback) {
     if (isDifferentMember(message)) {
       // Try parsing if the previous number is known.
       if (prevInt !== - 1 &&
-                canBeParsedAsNextNumber(message.content, prevInt)) {
+        canBeParsedAsNextNumber(message.content, prevInt)) {
         callback(true);
         return;
       }
@@ -300,21 +307,21 @@ function handleEdited(oldMessage, newMessage) {
   if (!isNaN(evaluate(oldMessage.content))) {
     if (evaluate(newMessage.content) !== evaluate(oldMessage.content)) {
       if (lastMessage && lastMessage.id === newMessage.id) {
-      // not approved, and it's the newest message. delete it!
+        // not approved, and it's the newest message. delete it!
         newMessage.delete()
-            .then((m) => {
-              fetchLastMessage();
-            })
-            .catch((error)=>{
-              logger.logError(`handleMessageInMillion() message deletion error: ${error.message}`);
-            });
+          .then((m) => {
+            fetchLastMessage();
+          })
+          .catch((error) => {
+            logger.logError(`handleEdited.handleMessageInMillion() message deletion error: ${error.message}`);
+          });
       } else {
         // not approved, but not the newest. Can't delete it. Send a message about it though.
         newMessage.author.createDM()
-            .then((channel) => {
-              channel.send(`*beep boop* Hi there. You edited a message in the counting channel. I detected that the value in your message has changed. Plase make sure it's currect. Have a nice day!`);
-            })
-            .catch((error) => logger.logError(`handleEdited() createDM error: ${error.content}`));
+          .then((channel) => {
+            channel.send(`*beep boop* Hi there. You edited a message in the counting channel. I detected that the value in your message has changed. Plase make sure it's currect. Have a nice day!`);
+          })
+          .catch((error) => logger.logError(`handleEdited() createDM error: ${error.content}`));
       }
     }
   }
@@ -334,7 +341,7 @@ function handleMessageInOtherChannel(message) {
   if (cmdMessage.indexOf('!million-') !== -1) {
     for (const key in AVAILABLE_COMMANDS) {
       if (AVAILABLE_COMMANDS.hasOwnProperty(key) &&
-           cmdMessage.indexOf(key) !== -1) {
+        cmdMessage.indexOf(key) !== -1) {
         AVAILABLE_COMMANDS[key](message);
         return;
       }
@@ -366,12 +373,12 @@ function handleMessageInMillion(message) {
     } else {
       logger.logMessage(message, false, true);
       message.delete()
-          .then((m) => {
-            fetchLastMessage();
-          })
-          .catch((error)=>{
-            logger.logError(`handleMessageInMillion() message deletion error: ${error.message}`);
-          });
+        .then((m) => {
+          fetchLastMessage();
+        })
+        .catch((error) => {
+          logger.logError(`runChecks.handleMessageInMillion() message deletion error: ${error.message}`);
+        });
     }
   });
 }
@@ -382,12 +389,12 @@ function handleMessageInMillion(message) {
 */
 function getMillionChannel() {
   const id = Number(process.env.PRODUCTION) > 0 ?
-            Number(process.env.BETTER_CPP_SERVER_ID) :
-            Number(process.env.TEST_SERVER_ID);
+    Number(process.env.BETTER_CPP_SERVER_ID) :
+    Number(process.env.TEST_SERVER_ID);
   return client.guilds.cache
-      .find((guild) => Number(guild.id) === id)
-      .channels.cache
-      .find((channel) => channel.name.toLowerCase() == COUNTING_CHANNEL_NAME);
+    .find((guild) => Number(guild.id) === id)
+    .channels.cache
+    .find((channel) => channel.name.toLowerCase() == COUNTING_CHANNEL_NAME);
 }
 
 /**
@@ -398,14 +405,14 @@ function fetchLastMessage() {
   console.log('Fetching the last message..');
   const millionChannel = getMillionChannel();
 
-  millionChannel.messages.fetch({limit: 2})
-      .then((messages) => {
-        console.log(`${messages.first().content.length > 0 ?
-                 messages.first().content:
-                '<empty message>'}`);
-        lastMessage = messages.first();
-      })
-      .catch((error) => logger.logError('fetchLastMessage(): message fetch error ' + error.message));
+  millionChannel.messages.fetch({ limit: 2 })
+    .then((messages) => {
+      console.log(`${messages.first().content.length > 0 ?
+        messages.first().content :
+        '<empty message>'}`);
+      lastMessage = messages.first();
+    })
+    .catch((error) => logger.logError('fetchLastMessage(): message fetch error ' + error.message));
 }
 
 
@@ -419,14 +426,14 @@ client.once('ready', () => {
 });
 
 
-client.on('message', (message) => {
+client.on(Discord.Events.MessageCreate, (message) => {
   if (message.channel.type === 'dm') {
-      return;
+    return;
   }
-  
+
   const id = Number(process.env.PRODUCTION) > 0 ?
-        Number(process.env.BETTER_CPP_SERVER_ID) :
-        Number(process.env.TEST_SERVER_ID);
+    Number(process.env.BETTER_CPP_SERVER_ID) :
+    Number(process.env.TEST_SERVER_ID);
   if (Number(message.guild.id) === id) {
     if (message.channel.name === COUNTING_CHANNEL_NAME) {
       handleMessageInMillion(message);
@@ -436,14 +443,14 @@ client.on('message', (message) => {
   }
 });
 
-client.on('messageUpdate', (oldMessage, newMessage) => {
+client.on(Discord.Events.MessageUpdate, (oldMessage, newMessage) => {
   if (newMessage.channel.type === 'dm') {
-      return;
+    return;
   }
-  
+
   const id = Number(process.env.PRODUCTION) > 0 ?
-        Number(process.env.BETTER_CPP_SERVER_ID) :
-        Number(process.env.TEST_SERVER_ID);
+    Number(process.env.BETTER_CPP_SERVER_ID) :
+    Number(process.env.TEST_SERVER_ID);
   if (Number(newMessage.guild.id) === id) {
     if (newMessage.channel.name === COUNTING_CHANNEL_NAME) {
       console.log(`Detected a message update: User 
@@ -456,7 +463,7 @@ client.on('messageUpdate', (oldMessage, newMessage) => {
   }
 });
 
-client.on('messageDelete', message => {
+client.on(Discord.Events.MessageDelete, message => {
   fetchLastMessage();
 });
 
@@ -469,9 +476,9 @@ client.login(process.env.TOKEN);
 // when the process is halted, save the userStats data first.
 nodeCleanup((exitCode, signal) => {
   fs.writeFileSync('./data/userStats.json',
-      JSON.stringify(userStats),
-      (err) => {
-        if (err) logger.logError('nodeCleanup error: ' + err.message);
-        console.log('Saved user stats, exiting.');
-      });
+    JSON.stringify(userStats),
+    (err) => {
+      if (err) logger.logError('nodeCleanup error: ' + err.message);
+      console.log('Saved user stats, exiting.');
+    });
 });
